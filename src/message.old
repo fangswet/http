@@ -1,0 +1,273 @@
+// use std::io::{ Read, BufReader, BufRead, ErrorKind };
+// use std::collections::HashMap;
+// use std::{ thread, time::{ Duration, Instant } };
+// use super::def::{ ParsingError };
+
+// #[derive(Clone)]
+// pub struct Headers
+// {
+//     pub headers: HashMap<String, String>,
+//     pub content: Vec<u8>
+// }
+
+// impl Headers
+// {
+//     pub fn new() -> Self
+//     {
+//         Headers { headers: HashMap::new(), content: Vec::new() }
+//     }
+
+//     pub fn set<S: Into<String>>(&mut self, header: S, value: S) -> Option<String>
+//     {
+//         self.headers.insert(header.into(), value.into())
+//     }
+
+//     pub fn find(&mut self, header: &str)-> Option<&mut String>
+//     {
+//         let lowercase = header.to_lowercase();
+
+//         for (k, mut v) in &mut self.headers
+//         {
+//             if k.to_lowercase() == lowercase
+//             {
+//                 return Some(v)
+//             }
+//         }
+
+//         None
+//     }
+
+//     pub fn is(&mut self, header: &str, value: &str) -> bool
+//     {
+//         if let Some(needle) = self.find(header)
+//         {
+//             return needle.to_lowercase() == value.to_lowercase()
+//         }
+
+//         false
+//     }
+
+//     pub fn parse<S: Read>(stream: &mut BufReader<&mut S>) -> Result<Headers, ParsingError>
+//     {
+//         let mut headers = Headers::new();
+//         let mut line = Vec::new();
+//         let mut read = 0;
+
+//         while let length = stream.read_until('\n' as u8, &mut line)
+//         {
+//             match length
+//             {
+//                 Ok(length) =>
+//                 {
+//                     read += length;
+//                     if read > 10000
+//                     {
+//                         return Err(ParsingError::Capacity)
+//                     }
+
+//                     if length >= 2 && line[length - 2] == '\r' as u8
+//                     {
+//                         if length == 2 { break }
+        
+//                         if let Some(colon_idx) = line.iter().position(|&x| x == ':' as u8)
+//                         {
+//                             let mut parts = line.split_at(colon_idx);
+
+//                             if let Ok(name) = String::from_utf8(parts.0.to_vec())
+//                             {
+//                                 parts.1 = &parts.1[1..parts.1.len() - 2];
+                                
+//                                 if parts.1.len() != 0 && (parts.1[0] as char).is_whitespace()
+//                                 {
+//                                     parts.1 = &parts.1[1..];
+//                                 }
+
+//                                 if let Ok(value) = String::from_utf8(parts.1.to_vec())
+//                                 {
+//                                     headers.set(name, value);
+//                                     headers.content.extend(&line);
+//                                     line.clear();
+//                                     continue
+//                                 }
+//                             }
+//                         }
+
+//                         return Err(ParsingError::Header)
+//                     }
+//                 },
+//                 Err(_) => return Err(ParsingError::IO)
+//             }
+//         }
+
+//         Ok(headers)
+//     }
+// }
+
+// struct NormalizedHeader<'a>
+// {
+//     value: &'a str,
+//     normalized: String
+// }
+
+// impl<'a> NormalizedHeader<'a>
+// {
+//     fn new(value: &'a str) -> Self
+//     {
+//         Self { value, normalized: value.to_uppercase() }
+//     }
+// }
+
+// struct InHeaders<'a>
+// {
+//     headers: HashMap<String, NormalizedHeader<'a>>,
+//     content: String
+// }
+
+// impl<'a> InHeaders<'a>
+// {
+//     pub fn new() -> Self
+//     {
+//         InHeaders { headers: HashMap::new(), content: String::new() }
+//     }
+
+//     fn set(&mut self, header: &str, value: &'a str)
+//     {
+//         self.headers.insert(header.to_uppercase(), NormalizedHeader::new(value));
+//     }
+
+//     pub fn find(&self, header: &str) -> Option<&NormalizedHeader>
+//     {
+//         self.headers.get(&header.to_uppercase())
+//     }
+
+//     pub fn is(&self, header: &str, value: &str) -> bool
+//     {
+//         let normalized = value.to_uppercase();
+
+//         if let Some(result) = self.find(header)
+//         {
+//             return result.normalized == normalized
+//         }
+
+//         false
+//     }
+
+//     pub fn parse2<S: Read>(&mut self, stream: &mut BufReader<&mut S>) -> Result<&Self, ParsingError>
+//     {
+//         let mut line = Vec::new();
+//         let mut read = 0;
+
+//         while let length = stream.read_until(b'\n', &mut line)
+//         {
+//             match length
+//             {
+//                 Ok(mut length) =>
+//                 {
+//                     read += length;
+//                     if read > 10000
+//                     {
+//                         return Err(ParsingError::Capacity)
+//                     }
+
+//                     // http headers are supposed to be ascii so this might be ok
+//                     if let Ok(line_str) = String::from_utf8(line)
+//                     {
+//                         if length >= 2 && line[length - 2] == b'\r'
+//                         {
+//                             line_str.find()
+//                         }
+//                     }
+
+//                     if length >= 2 && line[length - 2] == b'\r'
+//                     {
+//                         line.truncate(2);
+//                         length = line.len();
+
+//                         if length == 0 { break }
+//                         else if length > 2
+//                         {
+//                             if let Some(colon_idx) = line.iter().position(|&x| x == b':')
+//                             {
+//                                 let (mut name, mut value) = line.split_at(colon_idx);
+//                                 let (name_len, value_len) = (name.len(), value.len());
+
+//                                 if name_len > 1 || value_len > 0
+//                                 {
+//                                     name = &name[name_len - 2 ..];
+                                
+//                                     if let Ok(name) = String::from_utf8(name.to_vec())
+//                                     {
+//                                         if let Ok(value) = String::from_utf8(value.to_vec())
+//                                         {
+//                                             self.content.push_str(&line);
+
+//                                         }
+//                                     }
+//                                 }
+//                             }
+//                         }
+
+//                         return Err(ParsingError::Header)
+//                     }
+//                 }
+//             }
+//         }
+
+//         Ok(&self)
+//     }
+
+//     pub fn parse<S: Read>(stream: &mut BufReader<&mut S>) -> Result<Headers, ParsingError>
+//     {
+//         let mut headers = Headers::new();
+//         let mut line = Vec::new();
+//         let mut read = 0;
+
+//         while let length = stream.read_until('\n' as u8, &mut line)
+//         {
+//             match length
+//             {
+//                 Ok(length) =>
+//                 {
+//                     read += length;
+//                     if read > 10000
+//                     {
+//                         return Err(ParsingError::Capacity)
+//                     }
+
+//                     if length >= 2 && line[length - 2] == '\r' as u8
+//                     {
+//                         if length == 2 { break }
+        
+//                         if let Some(colon_idx) = line.iter().position(|&x| x == ':' as u8)
+//                         {
+//                             let mut parts = line.split_at(colon_idx);
+
+//                             if let Ok(name) = String::from_utf8(parts.0.to_vec())
+//                             {
+//                                 parts.1 = &parts.1[1..parts.1.len() - 2];
+                                
+//                                 if parts.1.len() != 0 && (parts.1[0] as char).is_whitespace()
+//                                 {
+//                                     parts.1 = &parts.1[1..];
+//                                 }
+
+//                                 if let Ok(value) = String::from_utf8(parts.1.to_vec())
+//                                 {
+//                                     headers.set(name, value);
+//                                     headers.content.extend(&line);
+//                                     line.clear();
+//                                     continue
+//                                 }
+//                             }
+//                         }
+
+//                         return Err(ParsingError::Header)
+//                     }
+//                 },
+//                 Err(_) => return Err(ParsingError::IO)
+//             }
+//         }
+
+//         Ok(headers)
+//     }
+// }
